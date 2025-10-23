@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cloud-Native KNN – Demo UI</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>Cloud-Native KNN</h1>
+      <nav>
+        <a href="/docs" target="_blank">OpenAPI Docs</a>
+        <a href="/metrics" target="_blank">Metrics JSON</a>
+        <a href="/samples" target="_blank">Samples</a>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <section class="card span-2">
+        <h2>Project Overview</h2>
+        <p>
+          Two tasks: <strong>Iris Classification</strong> and
+          <strong>Diabetes Regression</strong>. Pick a model from the dropdown
+          to compare predictions visually. Load metrics to see comparisons.
+        </p>
+        <div class="badges">
+          <span class="badge">FastAPI</span>
+          <span class="badge">KNN</span>
+          <span class="badge">LogReg</span>
+          <span class="badge">RandomForest</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Iris Classification</h2>
+        <form action="/ui/iris" method="post" class="grid">
+          <label
+            >Model
+            <select name="model">
+              <option value="knn" selected>KNN (best)</option>
+              <option value="logreg">Logistic Regression</option>
+              <option value="rf">Random Forest</option>
+            </select>
+          </label>
+          <label
+            >Sepal length<input
+              type="number"
+              step="any"
+              name="sepal_length"
+              value="5.1"
+              required
+          /></label>
+          <label
+            >Sepal width<input
+              type="number"
+              step="any"
+              name="sepal_width"
+              value="3.5"
+              required
+          /></label>
+          <label
+            >Petal length<input
+              type="number"
+              step="any"
+              name="petal_length"
+              value="1.4"
+              required
+          /></label>
+          <label
+            >Petal width<input
+              type="number"
+              step="any"
+              name="petal_width"
+              value="0.2"
+              required
+          /></label>
+          <button type="submit">Predict Iris</button>
+        </form>
+
+        {% if iris_result %}
+        <div class="result">
+          <h3>Model: {{ iris_result.model|upper }}</h3>
+          <h3>
+            Prediction: {{ iris_result.class_name }}
+            <small>(class {{ iris_result.predicted_class }})</small>
+          </h3>
+          <canvas id="irisProbaChart" height="120"></canvas>
+          <pre class="json">{{ iris_result | tojson(indent=2) }}</pre>
+        </div>
+        <script>
+          const irisProba = {{ iris_result.probabilities | tojson }};
+          const irisLabels = ["setosa","versicolor","virginica"];
+          new Chart(document.getElementById('irisProbaChart').getContext('2d'), {
+            type: 'doughnut',
+            data: { labels: irisLabels, datasets: [{ data: irisProba }]},
+            options: { plugins:{ legend:{ position:'bottom' } }, cutout: '60%' }
+          });
+        </script>
+        {% endif %} {% if cm_exists %}
+        <div class="result">
+          <h3>Last Training Confusion Matrix (KNN)</h3>
+          <img
+            src="/static/iris_cm.png"
+            alt="Iris Confusion Matrix"
+            style="
+              max-width: 100%;
+              border-radius: 12px;
+              border: 1px solid #1f2937;
+            "
+          />
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="card">
+        <h2>Diabetes Regression</h2>
+        <form action="/ui/diabetes" method="post" class="grid grid-10">
+          <label class="span-2"
+            >Model
+            <select name="model">
+              <option value="knn" selected>KNN (best)</option>
+              <option value="linreg">Linear Regression</option>
+              <option value="rf">Random Forest</option>
+            </select>
+          </label>
+          {% for i in range(10) %}
+          <label
+            >f{{ i }}<input
+              type="number"
+              step="any"
+              name="f{{ i }}"
+              value="{{ [0.038075906, 0.050680118, 0.061696207, 0.021872355, -0.044223498, -0.03482076, -0.043400846, -0.0025922629, 0.01990749, -0.017646125][i] if i < 10 else '' }}"
+              required
+          /></label>
+          {% endfor %}
+          <button type="submit">Predict Diabetes</button>
+        </form>
+
+        {% if diabetes_result is defined and diabetes_result is not none %}
+        <div class="result">
+          <h3>Prediction</h3>
+          <div class="kpi">
+            <div class="kpi-card">
+              <div class="kpi-value">{{ "%.2f"|format(diabetes_result) }}</div>
+              <div class="kpi-label">Predicted value</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="card span-2">
+        <h2>Model Metrics & Comparisons</h2>
+        <p>
+          Click to fetch current metrics from <code>/metrics</code>.
+          Visualizations include Iris scores, confusion matrix, and
+          <strong>model comparisons</strong>.
+        </p>
+        <button id="loadMetrics">Load Metrics</button>
+        <div class="metrics-grid">
+          <div>
+            <h3>Iris Scores</h3>
+            <canvas id="irisMetricsChart" height="160"></canvas>
+          </div>
+          <div>
+            <h3>Iris Confusion Matrix (Live)</h3>
+            <table class="heatmap" id="cmTable"></table>
+          </div>
+        </div>
+        <div class="metrics-grid">
+          <div>
+            <h3>Iris Model Comparison (Accuracy)</h3>
+            <canvas id="irisCompareChart" height="160"></canvas>
+          </div>
+          <div>
+            <h3>Diabetes Model Comparison (R² ↑, MSE/MAE ↓)</h3>
+            <canvas id="dbCompareChart" height="160"></canvas>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <small>v1.4.0 • FastAPI • KNN • Charts</small>
+    </footer>
+
+    <script>
+      const btn = document.getElementById("loadMetrics");
+      const cmTable = document.getElementById("cmTable");
+
+      btn?.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "Loading...";
+        try {
+          const res = await fetch("/metrics");
+          if (!res.ok) throw new Error("Failed to load metrics");
+          const data = await res.json();
+
+          // Iris metrics bar chart
+          const iris = data.iris || {};
+          const irisLabels = [
+            "accuracy",
+            "precision_macro",
+            "recall_macro",
+            "f1_macro",
+          ];
+          const irisValues = irisLabels.map((k) => iris[k] ?? 0);
+          new Chart(
+            document.getElementById("irisMetricsChart").getContext("2d"),
+            {
+              type: "bar",
+              data: { labels: irisLabels, datasets: [{ data: irisValues }] },
+              options: {
+                scales: { y: { beginAtZero: true, max: 1 } },
+                plugins: { legend: { display: false } },
+              },
+            }
+          );
+
+          // Confusion matrix heat "table"
+          const cm = iris.confusion_matrix || [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+          ];
+          const flat = cm.flat();
+          const maxV = Math.max(...flat, 1);
+          const headers = ["setosa", "versicolor", "virginica"];
+          let html =
+            "<tr><th></th>" +
+            headers.map((h) => `<th>${h}</th>`).join("") +
+            "</tr>";
+          cm.forEach((row, i) => {
+            html +=
+              "<tr><th>" +
+              headers[i] +
+              "</th>" +
+              row
+                .map((v) => {
+                  const pct = Math.round((v / maxV) * 100);
+                  return `<td style="--fill:${pct}%" title="${v}">${v}</td>`;
+                })
+                .join("") +
+              "</tr>";
+          });
+          cmTable.innerHTML = html;
+
+          // Iris comparison (Accuracy)
+          const irisComps = iris.comparisons || {};
+          const irisCompLabels = Object.keys(irisComps);
+          const irisAccValues = irisCompLabels.map(
+            (k) => irisComps[k]?.accuracy ?? 0
+          );
+          new Chart(
+            document.getElementById("irisCompareChart").getContext("2d"),
+            {
+              type: "bar",
+              data: {
+                labels: irisCompLabels,
+                datasets: [{ data: irisAccValues }],
+              },
+              options: {
+                scales: { y: { beginAtZero: true, max: 1 } },
+                plugins: { legend: { display: false } },
+              },
+            }
+          );
+
+          // Diabetes comparison (R2 / MSE / MAE)
+          const db = data.diabetes || {};
+          const dbComps = db.comparisons || {};
+          const dbLabels = Object.keys(dbComps);
+          const r2Vals = dbLabels.map((k) => dbComps[k]?.r2 ?? 0);
+          const mseVals = dbLabels.map((k) => dbComps[k]?.mse ?? 0);
+          const maeVals = dbLabels.map((k) => dbComps[k]?.mae ?? 0);
+
+          new Chart(
+            document.getElementById("dbCompareChart").getContext("2d"),
+            {
+              type: "bar",
+              data: {
+                labels: dbLabels,
+                datasets: [
+                  {
+                    label: "R² (higher is better)",
+                    data: r2Vals,
+                    yAxisID: "y1",
+                  },
+                  {
+                    label: "MSE (lower is better)",
+                    data: mseVals,
+                    yAxisID: "y2",
+                  },
+                  {
+                    label: "MAE (lower is better)",
+                    data: maeVals,
+                    yAxisID: "y2",
+                  },
+                ],
+              },
+              options: {
+                scales: {
+                  y1: {
+                    type: "linear",
+                    position: "left",
+                    beginAtZero: true,
+                    max: 1,
+                  },
+                  y2: { type: "linear", position: "right", beginAtZero: true },
+                },
+              },
+            }
+          );
+
+          btn.textContent = "Reload Metrics";
+          btn.disabled = false;
+        } catch (e) {
+          btn.textContent = "Load failed — retry";
+          btn.disabled = false;
+          console.error(e);
+        }
+      });
+    </script>
+  </body>
+</html>
